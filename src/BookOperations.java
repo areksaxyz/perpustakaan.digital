@@ -15,12 +15,12 @@ public class BookOperations extends JPanel {
 
     public BookOperations() {
         setLayout(new BorderLayout(10, 10));
-        setBackground(new Color(255, 255, 255)); // Latar belakang putih
+        setBackground(Color.WHITE);
 
         // Form input
         JPanel formPanel = new JPanel(new GridLayout(8, 2, 10, 10));
         formPanel.setBorder(BorderFactory.createTitledBorder("Tambah Buku"));
-        formPanel.setBackground(new Color(255, 255, 255));
+        formPanel.setBackground(Color.WHITE);
 
         isbnField = new JTextField();
         titleField = new JTextField();
@@ -30,8 +30,9 @@ public class BookOperations extends JPanel {
         typeComboBox = new JComboBox<>(new String[]{"Digital", "Fisik"});
         filePathField = new JTextField();
         addButton = new JButton("Tambah Buku");
-        addButton.setBackground(new Color(66, 165, 245)); // Biru modern
+        addButton.setBackground(new Color(0, 123, 255));
         addButton.setForeground(Color.WHITE);
+        addButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
 
         formPanel.add(new JLabel("ISBN:"));
         formPanel.add(isbnField);
@@ -52,12 +53,13 @@ public class BookOperations extends JPanel {
 
         // Form pencarian
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        searchPanel.setBackground(new Color(255, 255, 255));
+        searchPanel.setBackground(Color.WHITE);
         searchField = new JTextField(20);
         searchByComboBox = new JComboBox<>(new String[]{"Judul", "Penulis", "Subjek"});
         searchButton = new JButton("Cari");
-        searchButton.setBackground(new Color(66, 165, 245));
+        searchButton.setBackground(new Color(0, 123, 255));
         searchButton.setForeground(Color.WHITE);
+        searchButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
         searchPanel.add(new JLabel("Cari:"));
         searchPanel.add(searchField);
         searchPanel.add(searchByComboBox);
@@ -67,26 +69,29 @@ public class BookOperations extends JPanel {
         String[] columns = {"ISBN", "Judul", "Penulis", "Tahun", "Subjek", "Tipe", "Path File", "Tersedia"};
         tableModel = new DefaultTableModel(columns, 0);
         bookTable = new JTable(tableModel);
-        bookTable.setRowHeight(25); // Tinggi baris lebih besar
-        bookTable.getTableHeader().setBackground(new Color(66, 165, 245));
+        bookTable.setRowHeight(25);
+        bookTable.getTableHeader().setBackground(new Color(0, 123, 255));
         bookTable.getTableHeader().setForeground(Color.WHITE);
+        bookTable.setFont(new Font("SansSerif", Font.PLAIN, 12));
         JScrollPane scrollPane = new JScrollPane(bookTable);
 
         // Tombol aksi
         readButton = new JButton("Baca");
-        readButton.setBackground(new Color(102, 187, 106)); // Hijau
+        readButton.setBackground(new Color(0, 123, 255));
         readButton.setForeground(Color.WHITE);
+        readButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
         refreshButton = new JButton("Perbarui Daftar");
-        refreshButton.setBackground(new Color(66, 165, 245));
+        refreshButton.setBackground(new Color(0, 123, 255));
         refreshButton.setForeground(Color.WHITE);
+        refreshButton.setFont(new Font("SansSerif", Font.PLAIN, 12));
         JPanel buttonPanel = new JPanel();
-        buttonPanel.setBackground(new Color(255, 255, 255));
+        buttonPanel.setBackground(Color.WHITE);
         buttonPanel.add(readButton);
         buttonPanel.add(refreshButton);
 
         // Tambahkan komponen ke panel
         JPanel topPanel = new JPanel(new BorderLayout(10, 10));
-        topPanel.setBackground(new Color(255, 255, 255));
+        topPanel.setBackground(Color.WHITE);
         topPanel.add(formPanel, BorderLayout.NORTH);
         topPanel.add(searchPanel, BorderLayout.CENTER);
         add(topPanel, BorderLayout.NORTH);
@@ -163,7 +168,6 @@ public class BookOperations extends JPanel {
                     return;
                 }
 
-                // Minta nama siswa untuk merekam riwayat baca
                 String studentName = JOptionPane.showInputDialog(this, "Masukkan nama siswa:");
                 if (studentName == null || studentName.trim().isEmpty()) {
                     JOptionPane.showMessageDialog(this, "Nama siswa tidak boleh kosong!");
@@ -220,6 +224,9 @@ public class BookOperations extends JPanel {
         tableModel.setRowCount(0);
         LibraryManager manager = new LibraryManager();
         List<Book> books = manager.searchBooks(query, field.toLowerCase());
+        if (books.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Buku tidak ditemukan!", "Info", JOptionPane.INFORMATION_MESSAGE);
+        }
         for (Book book : books) {
             tableModel.addRow(new Object[]{
                     book.getIsbn(),
