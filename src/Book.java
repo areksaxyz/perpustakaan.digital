@@ -54,4 +54,8 @@ public class Book {
     public void setAvailable(boolean available) {
         this.isAvailable = available;
     }
+
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
+    }
 }
