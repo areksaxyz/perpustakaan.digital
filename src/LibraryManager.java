@@ -1,17 +1,24 @@
 import java.sql.*;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class LibraryManager {
     private static final String DB_URL = "jdbc:sqlite:storage/library.db";
-    private static final double FINE_PER_DAY = 1000.0; // Denda Rp 1.000 per hari
+    public static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private Map<String, Book> bookCache;
 
     public LibraryManager() {
-        createTables();
+        bookCache = new HashMap<>();
+        initializeDatabase();
+        initializeDefaultBooks();
+        loadBookCache();
     }
 
-    private void createTables() {
+    private void initializeDatabase() {
         String bookTable = "CREATE TABLE IF NOT EXISTS books (" +
                 "isbn TEXT PRIMARY KEY, " +
                 "title TEXT, " +
@@ -25,22 +32,70 @@ public class LibraryManager {
                 "loanId TEXT PRIMARY KEY, " +
                 "bookIsbn TEXT, " +
                 "borrowerName TEXT, " +
+                "borrowerClass TEXT, " +
+                "nim TEXT, " +
                 "borrowDate TEXT, " +
                 "dueDate TEXT, " +
-                "isReturned BOOLEAN, " +
-                "fine REAL)";
+                "returned BOOLEAN, " +
+                "returnDate TEXT, " +
+                "fine REAL, " +
+                "finePaid BOOLEAN, " +
+                "FOREIGN KEY(bookIsbn) REFERENCES books(isbn))";
         String readingHistoryTable = "CREATE TABLE IF NOT EXISTS reading_history (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "studentName TEXT, " +
                 "bookIsbn TEXT, " +
-                "readDate TEXT)"; // Baru: Tabel untuk riwayat baca
+                "readDate TEXT, " +
+                "FOREIGN KEY(bookIsbn) REFERENCES books(isbn))";
+
         try (Connection conn = DriverManager.getConnection(DB_URL);
              Statement stmt = conn.createStatement()) {
             stmt.execute(bookTable);
             stmt.execute(loanTable);
             stmt.execute(readingHistoryTable);
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("Error initializing database: " + e.getMessage());
+        }
+    }
+
+    private void initializeDefaultBooks() {
+        List<Book> defaultBooks = new ArrayList<>();
+
+        defaultBooks.add(new Book("978-3-16-148410-0", "Algoritma Pemrograman", "Penulis Algoritma", 2020, "Algoritma", "Digital", "http://eprints.umsida.ac.id/9873/5/BE1-ALPO-BukuAjar.pdf"));
+        defaultBooks.add(new Book("978-3-16-148411-7", "Pemrograman Java", "Penulis Java", 2019, "Pemrograman", "Digital", "https://digilib.stekom.ac.id/assets/dokumen/ebook/feb_BMuBPtvpXwUkhZqdyUPA7LyV7948c7ZdhjGj8z2EkAjSpNgD_njQSpM_1656322622.pdf"));
+        defaultBooks.add(new Book("978-3-16-148412-4", "Dasar Dasar Algoritma", "Penulis Dasar Algoritma", 2021, "Algoritma", "Digital", "URL Tidak Tersedia"));
+        defaultBooks.add(new Book("978-3-16-148413-1", "Pemrograman Python", "Penulis Python", 2022, "Pemrograman", "Digital", "https://repository.unikom.ac.id/65984/1/E-Book_Belajar_Pemrograman_Python_Dasar.pdf"));
+        defaultBooks.add(new Book("978-3-16-148414-8", "JavaScript", "Penulis JavaScript", 2018, "Pemrograman", "Digital", "https://rahmatfauzi.com/wp-content/uploads/2019/12/W3-JavaScript.pdf"));
+        defaultBooks.add(new Book("978-3-16-148415-5", "Matematika Diskrit", "Penulis Matematika", 2015, "Matematika", "Fisik", null));
+        defaultBooks.add(new Book("978-3-16-148416-2", "Literasi Digital", "Penulis Literasi", 2023, "Literasi", "Fisik", null));
+        defaultBooks.add(new Book("978-3-16-148417-9", "Bahasa Inggris", "Penulis Bahasa Inggris", 2017, "Bahasa", "Fisik", null));
+        defaultBooks.add(new Book("978-3-16-148418-6", "Kewarganegaraan", "Penulis Kewarganegaraan", 2016, "Kewarganegaraan", "Fisik", null));
+
+        for (Book book : defaultBooks) {
+            if (!bookExists(book.getIsbn())) {
+                book.setAvailable(true);
+                addBook(book);
+            }
+        }
+    }
+
+    private void loadBookCache() {
+        List<Book> books = getAllBooks();
+        for (Book book : books) {
+            bookCache.put(book.getIsbn(), book);
+        }
+    }
+
+    private boolean bookExists(String isbn) {
+        String sql = "SELECT COUNT(*) FROM books WHERE isbn = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, isbn);
+            ResultSet rs = pstmt.executeQuery();
+            return rs.getInt(1) > 0;
+        } catch (SQLException e) {
+            System.err.println("Error checking book existence: " + e.getMessage());
+            return false;
         }
     }
 
@@ -57,8 +112,21 @@ public class LibraryManager {
             pstmt.setString(7, book.getFilePath());
             pstmt.setBoolean(8, book.isAvailable());
             pstmt.executeUpdate();
+            bookCache.put(book.getIsbn(), book);
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("Error adding book: " + e.getMessage());
+        }
+    }
+
+    public void removeBook(String isbn) {
+        String sql = "DELETE FROM books WHERE isbn = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, isbn);
+            pstmt.executeUpdate();
+            bookCache.remove(isbn);
+        } catch (SQLException e) {
+            System.err.println("Error removing book: " + e.getMessage());
         }
     }
 
@@ -82,72 +150,75 @@ public class LibraryManager {
                 books.add(book);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("Error retrieving books: " + e.getMessage());
         }
         return books;
+    }
+
+    public Book getBookByIsbn(String isbn) {
+        return bookCache.getOrDefault(isbn, null);
     }
 
     public List<Book> searchBooks(String query, String field) {
-        List<Book> books = new ArrayList<>();
-        String sql = "";
-        switch (field.toLowerCase()) {
-            case "judul":
-                sql = "SELECT * FROM books WHERE title LIKE ?";
-                break;
-            case "penulis":
-                sql = "SELECT * FROM books WHERE author LIKE ?";
-                break;
-            case "subjek":
-                sql = "SELECT * FROM books WHERE subject LIKE ?";
-                break;
-            default:
-                return books;
-        }
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, "%" + query + "%");
-            ResultSet rs = pstmt.executeQuery();
-            while (rs.next()) {
-                Book book = new Book(
-                        rs.getString("isbn"),
-                        rs.getString("title"),
-                        rs.getString("author"),
-                        rs.getInt("year"),
-                        rs.getString("subject"),
-                        rs.getString("type"),
-                        rs.getString("filePath")
-                );
-                book.setAvailable(rs.getBoolean("isAvailable"));
-                books.add(book);
+        List<Book> allBooks = getAllBooks();
+        List<Book> filteredBooks = new ArrayList<>();
+
+        for (Book book : allBooks) {
+            boolean matches = false;
+            switch (field.toLowerCase()) {
+                case "judul":
+                    if (book.getTitle().toLowerCase().contains(query.toLowerCase())) {
+                        matches = true;
+                    }
+                    break;
+                case "penulis":
+                    if (book.getAuthor().toLowerCase().contains(query.toLowerCase())) {
+                        matches = true;
+                    }
+                    break;
+                case "subjek":
+                    if (book.getSubject().toLowerCase().contains(query.toLowerCase())) {
+                        matches = true;
+                    }
+                    break;
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
+            if (matches) {
+                filteredBooks.add(book);
+            }
         }
-        return books;
+
+        return filteredBooks;
     }
 
     public void addLoan(Loan loan) {
-        String sql = "INSERT INTO loans (loanId, bookIsbn, borrowerName, borrowDate, dueDate, isReturned, fine) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO loans (loanId, bookIsbn, borrowerName, borrowerClass, nim, borrowDate, dueDate, returned, returnDate, fine, finePaid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, loan.getLoanId());
             pstmt.setString(2, loan.getBookIsbn());
             pstmt.setString(3, loan.getBorrowerName());
-            pstmt.setString(4, loan.getBorrowDate().toString());
-            pstmt.setString(5, loan.getDueDate().toString());
-            pstmt.setBoolean(6, loan.isReturned());
-            pstmt.setDouble(7, loan.getFine());
+            pstmt.setString(4, loan.getBorrowerClass());
+            pstmt.setString(5, loan.getNim());
+            pstmt.setString(6, loan.getBorrowDate().format(DATE_FORMATTER));
+            pstmt.setString(7, loan.getDueDate().format(DATE_FORMATTER));
+            pstmt.setBoolean(8, loan.isReturned());
+            pstmt.setString(9, null);
+            pstmt.setDouble(10, loan.getFine());
+            pstmt.setBoolean(11, loan.isFinePaid());
             pstmt.executeUpdate();
 
-            // Tandai buku sebagai tidak tersedia
-            String updateBook = "UPDATE books SET isAvailable = ? WHERE isbn = ?";
-            try (PreparedStatement bookStmt = conn.prepareStatement(updateBook)) {
-                bookStmt.setBoolean(1, false);
-                bookStmt.setString(2, loan.getBookIsbn());
-                bookStmt.executeUpdate();
+            String updateBookSql = "UPDATE books SET isAvailable = ? WHERE isbn = ?";
+            try (PreparedStatement updateStmt = conn.prepareStatement(updateBookSql)) {
+                updateStmt.setBoolean(1, false);
+                updateStmt.setString(2, loan.getBookIsbn());
+                updateStmt.executeUpdate();
+                Book book = bookCache.get(loan.getBookIsbn());
+                if (book != null) {
+                    book.setAvailable(false);
+                }
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("Error adding loan: " + e.getMessage());
         }
     }
 
@@ -162,179 +233,27 @@ public class LibraryManager {
                         rs.getString("loanId"),
                         rs.getString("bookIsbn"),
                         rs.getString("borrowerName"),
-                        LocalDate.parse(rs.getString("borrowDate")),
-                        LocalDate.parse(rs.getString("dueDate"))
+                        rs.getString("borrowerClass"),
+                        rs.getString("nim"),
+                        LocalDate.parse(rs.getString("borrowDate"), DATE_FORMATTER),
+                        LocalDate.parse(rs.getString("dueDate"), DATE_FORMATTER)
                 );
-                loan.setReturned(rs.getBoolean("isReturned"));
+                loan.setReturned(rs.getBoolean("returned"));
+                String returnDateStr = rs.getString("returnDate");
+                if (returnDateStr != null) {
+                    loan.setReturnDate(LocalDate.parse(returnDateStr, DATE_FORMATTER));
+                }
                 loan.setFine(rs.getDouble("fine"));
+                loan.setFinePaid(rs.getBoolean("finePaid"));
                 loans.add(loan);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        // Hitung denda untuk peminjaman yang belum dikembalikan
-        for (Loan loan : loans) {
-            if (!loan.isReturned()) {
-                double fine = calculateFine(loan);
-                loan.setFine(fine);
-                updateLoanFine(loan.getLoanId(), fine);
-            }
+            System.err.println("Error retrieving loans: " + e.getMessage());
         }
         return loans;
     }
 
-    public void extendLoan(String loanId, int days) {
-        String sql = "UPDATE loans SET dueDate = ? WHERE loanId = ?";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            Loan loan = getLoanById(loanId);
-            if (loan != null && !loan.isReturned()) {
-                LocalDate newDueDate = loan.getDueDate().plusDays(days);
-                pstmt.setString(1, newDueDate.toString());
-                pstmt.setString(2, loanId);
-                pstmt.executeUpdate();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void returnBook(String loanId) {
-        String sql = "UPDATE loans SET isReturned = ?, fine = ? WHERE loanId = ?";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            Loan loan = getLoanById(loanId);
-            if (loan != null) {
-                double finalFine = calculateFine(loan);
-                pstmt.setBoolean(1, true);
-                pstmt.setDouble(2, finalFine);
-                pstmt.setString(3, loanId);
-                pstmt.executeUpdate();
-
-                // Tandai buku sebagai tersedia
-                String updateBook = "UPDATE books SET isAvailable = ? WHERE isbn = ?";
-                try (PreparedStatement bookStmt = conn.prepareStatement(updateBook)) {
-                    bookStmt.setBoolean(1, true);
-                    bookStmt.setString(2, loan.getBookIsbn());
-                    bookStmt.executeUpdate();
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // Baru: Merekam riwayat baca
-    public void recordReading(String studentName, String bookIsbn) {
-        String sql = "INSERT INTO reading_history (studentName, bookIsbn, readDate) VALUES (?, ?, ?)";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, studentName);
-            pstmt.setString(2, bookIsbn);
-            pstmt.setString(3, LocalDate.now().toString());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    // Baru: Statistik - Buku populer (berdasarkan peminjaman dan pembacaan)
-    public List<Map.Entry<String, Integer>> getPopularBooks() {
-        Map<String, Integer> bookCounts = new HashMap<>();
-
-        // Hitung dari peminjaman
-        String loanSql = "SELECT bookIsbn FROM loans";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(loanSql)) {
-            while (rs.next()) {
-                String isbn = rs.getString("bookIsbn");
-                bookCounts.put(isbn, bookCounts.getOrDefault(isbn, 0) + 1);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        // Hitung dari pembacaan
-        String readSql = "SELECT bookIsbn FROM reading_history";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(readSql)) {
-            while (rs.next()) {
-                String isbn = rs.getString("bookIsbn");
-                bookCounts.put(isbn, bookCounts.getOrDefault(isbn, 0) + 1);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        // Urutkan berdasarkan jumlah (descending)
-        List<Map.Entry<String, Integer>> sortedBooks = new ArrayList<>(bookCounts.entrySet());
-        sortedBooks.sort((a, b) -> b.getValue().compareTo(a.getValue()));
-        return sortedBooks.subList(0, Math.min(5, sortedBooks.size())); // Top 5
-    }
-
-    // Baru: Statistik - Peminjam aktif
-    public List<Map.Entry<String, Integer>> getActiveBorrowers() {
-        Map<String, Integer> borrowerCounts = new HashMap<>();
-        String sql = "SELECT borrowerName FROM loans";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            while (rs.next()) {
-                String borrower = rs.getString("borrowerName");
-                borrowerCounts.put(borrower, borrowerCounts.getOrDefault(borrower, 0) + 1);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        List<Map.Entry<String, Integer>> sortedBorrowers = new ArrayList<>(borrowerCounts.entrySet());
-        sortedBorrowers.sort((a, b) -> b.getValue().compareTo(a.getValue()));
-        return sortedBorrowers.subList(0, Math.min(5, sortedBorrowers.size())); // Top 5
-    }
-
-    // Baru: Rekam jejak siswa
-    public List<String> getStudentHistory(String studentName) {
-        List<String> history = new ArrayList<>();
-
-        // Riwayat peminjaman
-        String loanSql = "SELECT * FROM loans WHERE borrowerName = ?";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             PreparedStatement pstmt = conn.prepareStatement(loanSql)) {
-            pstmt.setString(1, studentName);
-            ResultSet rs = pstmt.executeQuery();
-            while (rs.next()) {
-                String isbn = rs.getString("bookIsbn");
-                String borrowDate = rs.getString("borrowDate");
-                String dueDate = rs.getString("dueDate");
-                String status = rs.getBoolean("isReturned") ? "Dikembalikan" : "Dipinjam";
-                history.add("Peminjaman - ISBN: " + isbn + ", Tgl Pinjam: " + borrowDate + ", Jatuh Tempo: " + dueDate + ", Status: " + status);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        // Riwayat pembacaan
-        String readSql = "SELECT * FROM reading_history WHERE studentName = ?";
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             PreparedStatement pstmt = conn.prepareStatement(readSql)) {
-            pstmt.setString(1, studentName);
-            ResultSet rs = pstmt.executeQuery();
-            while (rs.next()) {
-                String isbn = rs.getString("bookIsbn");
-                String readDate = rs.getString("readDate");
-                history.add("Pembacaan - ISBN: " + isbn + ", Tgl Baca: " + readDate);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-        return history;
-    }
-
-    private Loan getLoanById(String loanId) {
+    public Loan getLoanById(String loanId) {
         String sql = "SELECT * FROM loans WHERE loanId = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -345,31 +264,70 @@ public class LibraryManager {
                         rs.getString("loanId"),
                         rs.getString("bookIsbn"),
                         rs.getString("borrowerName"),
-                        LocalDate.parse(rs.getString("borrowDate")),
-                        LocalDate.parse(rs.getString("dueDate"))
+                        rs.getString("borrowerClass"),
+                        rs.getString("nim"),
+                        LocalDate.parse(rs.getString("borrowDate"), DATE_FORMATTER),
+                        LocalDate.parse(rs.getString("dueDate"), DATE_FORMATTER)
                 );
+                loan.setReturned(rs.getBoolean("returned"));
+                String returnDateStr = rs.getString("returnDate");
+                if (returnDateStr != null) {
+                    loan.setReturnDate(LocalDate.parse(returnDateStr, DATE_FORMATTER));
+                }
                 loan.setFine(rs.getDouble("fine"));
+                loan.setFinePaid(rs.getBoolean("finePaid"));
                 return loan;
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("Error retrieving loan: " + e.getMessage());
         }
         return null;
     }
 
-    private double calculateFine(Loan loan) {
-        if (loan.isReturned()) {
-            return loan.getFine();
+    public void returnBook(String loanId) {
+        String sql = "UPDATE loans SET returned = ?, returnDate = ? WHERE loanId = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setBoolean(1, true);
+            pstmt.setString(2, LocalDate.now().format(DATE_FORMATTER));
+            pstmt.setString(3, loanId);
+            pstmt.executeUpdate();
+
+            Loan loan = getLoanById(loanId);
+            if (loan != null) {
+                String updateBookSql = "UPDATE books SET isAvailable = ? WHERE isbn = ?";
+                try (PreparedStatement updateStmt = conn.prepareStatement(updateBookSql)) {
+                    updateStmt.setBoolean(1, true);
+                    updateStmt.setString(2, loan.getBookIsbn());
+                    updateStmt.executeUpdate();
+                    Book book = bookCache.get(loan.getBookIsbn());
+                    if (book != null) {
+                        book.setAvailable(true);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error returning book: " + e.getMessage());
         }
-        LocalDate today = LocalDate.now();
-        if (today.isAfter(loan.getDueDate())) {
-            long daysLate = ChronoUnit.DAYS.between(loan.getDueDate(), today);
-            return daysLate * FINE_PER_DAY;
-        }
-        return 0.0;
     }
 
-    private void updateLoanFine(String loanId, double fine) {
+    public void extendLoan(String loanId, int days) {
+        Loan loan = getLoanById(loanId);
+        if (loan != null) {
+            loan.extendDueDate(days);
+            String sql = "UPDATE loans SET dueDate = ? WHERE loanId = ?";
+            try (Connection conn = DriverManager.getConnection(DB_URL);
+                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, loan.getDueDate().format(DATE_FORMATTER));
+                pstmt.setString(2, loanId);
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                System.err.println("Error extending loan: " + e.getMessage());
+            }
+        }
+    }
+
+    public void updateLoanFine(String loanId, double fine) {
         String sql = "UPDATE loans SET fine = ? WHERE loanId = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -377,23 +335,137 @@ public class LibraryManager {
             pstmt.setString(2, loanId);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("Error updating loan fine: " + e.getMessage());
         }
     }
 
-    // Baru: Mendapatkan judul buku berdasarkan ISBN
+    public void markFineAsPaid(String loanId) {
+        String sql = "UPDATE loans SET finePaid = ? WHERE loanId = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setBoolean(1, true);
+            pstmt.setString(2, loanId);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Error marking fine as paid: " + e.getMessage());
+        }
+    }
+
     public String getBookTitleByIsbn(String isbn) {
-        String sql = "SELECT title FROM books WHERE isbn = ?";
+        Book book = bookCache.get(isbn);
+        return book != null ? book.getTitle() : "Unknown Title";
+    }
+
+    public String getBookFilePath(String isbn) {
+        String sql = "SELECT filePath FROM books WHERE isbn = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, isbn);
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
-                return rs.getString("title");
+                return rs.getString("filePath");
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            System.err.println("Error retrieving book file path: " + e.getMessage());
         }
-        return "Unknown Book";
+        return null;
+    }
+
+    public void updateBookFilePath(String isbn, String filePath) {
+        String sql = "UPDATE books SET filePath = ? WHERE isbn = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, filePath);
+            pstmt.setString(2, isbn);
+            pstmt.executeUpdate();
+            Book book = bookCache.get(isbn);
+            if (book != null) {
+                book.setFilePath(filePath);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error updating book file path: " + e.getMessage());
+        }
+    }
+
+    public boolean canReadBook(String isbn) {
+        Book book = bookCache.get(isbn);
+        if (book != null) {
+            return "Digital".equals(book.getType()) && (book.getFilePath() != null && !book.getFilePath().isEmpty());
+        }
+        return false;
+    }
+
+    public boolean isBookBorrowedByOther(String isbn, String currentUser) {
+        String sql = "SELECT borrowerName FROM loans WHERE bookIsbn = ? AND returned = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, isbn);
+            pstmt.setBoolean(2, false);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                String borrower = rs.getString("borrowerName");
+                if (!borrower.equals(currentUser)) {
+                    return true;
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error checking if book is borrowed by other: " + e.getMessage());
+        }
+        return false;
+    }
+
+    public void recordReading(String studentName, String isbn) {
+        String sql = "INSERT INTO reading_history (studentName, bookIsbn, readDate) VALUES (?, ?, ?)";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, studentName);
+            pstmt.setString(2, isbn);
+            pstmt.setString(3, LocalDate.now().format(DATE_FORMATTER));
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Error recording reading: " + e.getMessage());
+        }
+    }
+
+    public List<String[]> getReadingHistory() {
+        List<String[]> history = new ArrayList<>();
+        String sql = "SELECT rh.studentName, b.title, rh.readDate " +
+                "FROM reading_history rh " +
+                "JOIN books b ON rh.bookIsbn = b.isbn " +
+                "ORDER BY rh.readDate DESC";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                history.add(new String[]{
+                        rs.getString("studentName"),
+                        rs.getString("title"),
+                        rs.getString("readDate")
+                });
+            }
+        } catch (SQLException e) {
+            System.err.println("Error retrieving reading history: " + e.getMessage());
+        }
+        return history;
+    }
+
+    public List<String> getBooksReadByUser(String user) {
+        List<String> booksRead = new ArrayList<>();
+        String sql = "SELECT DISTINCT bookIsbn FROM reading_history WHERE studentName = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, user);
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                String isbn = rs.getString("bookIsbn");
+                String bookTitle = getBookTitleByIsbn(isbn);
+                if (bookTitle != null && !bookTitle.equals("Unknown Title")) {
+                    booksRead.add(bookTitle);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error retrieving books read by user: " + e.getMessage());
+        }
+        return booksRead;
     }
 }
