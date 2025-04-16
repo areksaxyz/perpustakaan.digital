@@ -1,180 +1,216 @@
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.UUID;
 
 public class LoanOperations extends JPanel {
-    private JTextField isbnField, borrowerField;
-    private JButton borrowButton, extendButton, returnButton, refreshButton;
     private JTable loanTable;
     private DefaultTableModel tableModel;
+    private JTextField borrowerField;
+    private JComboBox<String> bookComboBox;
+    private JButton borrowButton, extendButton, returnButton, deleteButton, refreshButton;
 
     public LoanOperations() {
-        setLayout(new BorderLayout(10, 10));
-        setBackground(new Color(255, 255, 255));
+        // Warna tema modern
+        Color primaryColor = new Color(25, 118, 210); // Biru profesional
+        Color accentColor = new Color(229, 57, 53); // Merah untuk aksen
+        Color backgroundColor = new Color(240, 242, 245); // Latar belakang abu-abu lembut
+        Color cardColor = Color.WHITE; // Warna kartu untuk panel
+        Color textColor = new Color(33, 33, 33); // Teks utama
 
-        // Form peminjaman
-        JPanel formPanel = new JPanel(new GridLayout(3, 2, 10, 10));
-        formPanel.setBorder(BorderFactory.createTitledBorder("Pinjam Buku"));
-        formPanel.setBackground(new Color(255, 255, 255));
+        // Font modern
+        Font titleFont = new Font("Segoe UI", Font.BOLD, 20);
+        Font labelFont = new Font("Segoe UI", Font.BOLD, 14);
+        Font fieldFont = new Font("Segoe UI", Font.PLAIN, 14);
+        Font buttonFont = new Font("Segoe UI", Font.BOLD, 14);
+        Font tableFont = new Font("Segoe UI", Font.PLAIN, 14);
 
-        isbnField = new JTextField();
+        // Atur layout utama
+        setLayout(new BorderLayout(20, 20));
+        setBackground(backgroundColor);
+
+        // Header panel
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(cardColor);
+        JLabel headerLabel = new JLabel("Manajemen Peminjaman");
+        headerLabel.setFont(titleFont);
+        headerLabel.setForeground(primaryColor);
+        headerPanel.add(headerLabel, BorderLayout.WEST);
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        add(headerPanel, BorderLayout.NORTH);
+
+        // Input panel
+        JPanel inputPanel = new JPanel(new GridLayout(3, 2, 10, 10));
+        inputPanel.setBackground(cardColor);
+        inputPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
+                BorderFactory.createTitledBorder("Pengajuan Peminjaman Online")));
+
+        JLabel bookLabel = new JLabel("Pilih Buku:");
+        bookLabel.setFont(labelFont);
+        bookLabel.setForeground(textColor);
+        bookComboBox = new JComboBox<>();
+        bookComboBox.setFont(fieldFont);
+
+        JLabel borrowerLabel = new JLabel("Nama Peminjam:");
+        borrowerLabel.setFont(labelFont);
+        borrowerLabel.setForeground(textColor);
         borrowerField = new JTextField();
-        borrowButton = new JButton("Pinjam Buku");
-        borrowButton.setBackground(new Color(66, 165, 245));
-        borrowButton.setForeground(Color.WHITE);
+        borrowerField.setFont(fieldFont);
+        borrowerField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200)),
+                BorderFactory.createEmptyBorder(5, 5, 5, 5)));
 
-        formPanel.add(new JLabel("ISBN Buku:"));
-        formPanel.add(isbnField);
-        formPanel.add(new JLabel("Nama Siswa:"));
-        formPanel.add(borrowerField);
-        formPanel.add(new JLabel(""));
-        formPanel.add(borrowButton);
+        borrowButton = createStyledButton("Ajukan Pinjam", primaryColor, buttonFont, null);
 
-        // Tabel untuk daftar peminjaman
-        String[] columns = {"ID Pinjam", "ISBN", "Siswa", "Tgl Pinjam", "Jatuh Tempo", "Status", "Denda (Rp)", "Status Jatuh Tempo"};
-        tableModel = new DefaultTableModel(columns, 0);
+        inputPanel.add(bookLabel);
+        inputPanel.add(bookComboBox);
+        inputPanel.add(borrowerLabel);
+        inputPanel.add(borrowerField);
+        inputPanel.add(new JLabel());
+        inputPanel.add(borrowButton);
+
+        add(inputPanel, BorderLayout.NORTH);
+
+        // Tabel peminjaman
+        String[] columnNames = {"ID Peminjaman", "Buku", "Peminjam", "Tanggal Pinjam", "Tanggal Jatuh Tempo", "Status", "Aksi"};
+        tableModel = new DefaultTableModel(columnNames, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 6;
+            }
+        };
         loanTable = new JTable(tableModel);
-        loanTable.setRowHeight(25);
-        loanTable.getTableHeader().setBackground(new Color(66, 165, 245));
+        loanTable.setRowHeight(35);
+        loanTable.setFont(tableFont);
+        loanTable.setBackground(Color.WHITE);
+        loanTable.setForeground(textColor);
+        loanTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 14));
+        loanTable.getTableHeader().setBackground(primaryColor);
         loanTable.getTableHeader().setForeground(Color.WHITE);
+        loanTable.setGridColor(new Color(200, 200, 200));
+        loanTable.setSelectionBackground(primaryColor);
+        loanTable.setSelectionForeground(Color.WHITE);
+
+        loanTable.getColumn("Aksi").setCellRenderer(new ButtonRenderer("Perpanjang", primaryColor));
+        loanTable.getColumn("Aksi").setCellEditor(new ButtonEditor(new JCheckBox(), "Perpanjang", primaryColor));
+
         JScrollPane scrollPane = new JScrollPane(loanTable);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        JPanel tablePanel = new JPanel(new BorderLayout());
+        tablePanel.setBackground(cardColor);
+        tablePanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)));
+        tablePanel.add(scrollPane, BorderLayout.CENTER);
+        add(tablePanel, BorderLayout.CENTER);
 
         // Tombol aksi
-        extendButton = new JButton("Perpanjang");
-        extendButton.setBackground(new Color(255, 193, 7)); // Kuning
-        extendButton.setForeground(Color.WHITE);
-        returnButton = new JButton("Kembalikan");
-        returnButton.setBackground(new Color(102, 187, 106)); // Hijau
-        returnButton.setForeground(Color.WHITE);
-        refreshButton = new JButton("Perbarui Daftar");
-        refreshButton.setBackground(new Color(66, 165, 245));
-        refreshButton.setForeground(Color.WHITE);
+        returnButton = createStyledButton("Kembalikan Buku", new Color(255, 165, 0), buttonFont, null);
+        deleteButton = createStyledButton("Hapus Peminjaman", accentColor, buttonFont, null);
+        refreshButton = createStyledButton("Segarkan", primaryColor, buttonFont, null);
+
         JPanel buttonPanel = new JPanel();
-        buttonPanel.setBackground(new Color(255, 255, 255));
-        buttonPanel.add(extendButton);
+        buttonPanel.setBackground(backgroundColor);
         buttonPanel.add(returnButton);
+        buttonPanel.add(deleteButton);
         buttonPanel.add(refreshButton);
-
-        // Tambahkan komponen ke panel
-        add(formPanel, BorderLayout.NORTH);
-        add(scrollPane, BorderLayout.CENTER);
         add(buttonPanel, BorderLayout.SOUTH);
-
-        // Event listener untuk tombol Pinjam
-        borrowButton.addActionListener(e -> {
-            try {
-                String isbn = isbnField.getText();
-                String borrower = borrowerField.getText();
-
-                if (isbn.isEmpty() || borrower.isEmpty()) {
-                    JOptionPane.showMessageDialog(this, "Harap isi semua kolom!");
-                    return;
-                }
-
-                LibraryManager manager = new LibraryManager();
-                List<Book> books = manager.getAllBooks();
-                Book selectedBook = null;
-                for (Book book : books) {
-                    if (book.getIsbn().equals(isbn) && book.isAvailable()) {
-                        selectedBook = book;
-                        break;
-                    }
-                }
-
-                if (selectedBook == null) {
-                    JOptionPane.showMessageDialog(this, "Buku tidak ditemukan atau sudah dipinjam!");
-                    return;
-                }
-
-                String loanId = UUID.randomUUID().toString();
-                LocalDate borrowDate = LocalDate.now();
-                LocalDate dueDate = borrowDate.plusDays(14);
-                Loan loan = new Loan(loanId, isbn, borrower, borrowDate, dueDate);
-                manager.addLoan(loan);
-
-                JOptionPane.showMessageDialog(this, "Buku berhasil dipinjam!");
-                clearForm();
-                refreshTable();
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
-            }
-        });
-
-        // Event listener untuk tombol Perpanjang
-        extendButton.addActionListener(e -> {
-            int selectedRow = loanTable.getSelectedRow();
-            if (selectedRow >= 0) {
-                String loanId = (String) tableModel.getValueAt(selectedRow, 0);
-                LibraryManager manager = new LibraryManager();
-                manager.extendLoan(loanId, 7);
-                JOptionPane.showMessageDialog(this, "Peminjaman diperpanjang!");
-                refreshTable();
-            } else {
-                JOptionPane.showMessageDialog(this, "Pilih peminjaman terlebih dahulu!");
-            }
-        });
-
-        // Event listener untuk tombol Kembalikan
-        returnButton.addActionListener(e -> {
-            int selectedRow = loanTable.getSelectedRow();
-            if (selectedRow >= 0) {
-                String loanId = (String) tableModel.getValueAt(selectedRow, 0);
-                LibraryManager manager = new LibraryManager();
-                manager.returnBook(loanId);
-                JOptionPane.showMessageDialog(this, "Buku dikembalikan!");
-                refreshTable();
-            } else {
-                JOptionPane.showMessageDialog(this, "Pilih peminjaman terlebih dahulu!");
-            }
-        });
-
-        // Event listener untuk tombol Perbarui
-        refreshButton.addActionListener(e -> refreshTable());
-
-        // Muat data awal
-        refreshTable();
     }
 
-    private void clearForm() {
-        isbnField.setText("");
-        borrowerField.setText("");
+    private JButton createStyledButton(String text, Color backgroundColor, Font font, Dimension size) {
+        JButton button = new JButton(text);
+        button.setFont(font);
+        button.setBackground(backgroundColor);
+        button.setForeground(Color.WHITE);
+        button.setOpaque(true);
+        button.setBorderPainted(false);
+        button.setFocusPainted(false);
+        if (size != null) {
+            button.setPreferredSize(size);
+        }
+        return button;
     }
 
-    private void refreshTable() {
-        tableModel.setRowCount(0);
-        LibraryManager manager = new LibraryManager();
-        List<Loan> loans = manager.getAllLoans();
-        for (Loan loan : loans) {
-            String dueStatus = getDueStatus(loan);
-            tableModel.addRow(new Object[]{
-                    loan.getLoanId(),
-                    loan.getBookIsbn(),
-                    loan.getBorrowerName(),
-                    loan.getBorrowDate().toString(),
-                    loan.getDueDate().toString(),
-                    loan.isReturned() ? "Dikembalikan" : "Dipinjam",
-                    loan.getFine(),
-                    dueStatus
-            });
+    private class ButtonRenderer extends JButton implements javax.swing.table.TableCellRenderer {
+        public ButtonRenderer(String text, Color bgColor) {
+            setOpaque(true);
+            setBackground(bgColor);
+            setForeground(Color.WHITE);
+            setText(text);
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            return this;
         }
     }
 
-    private String getDueStatus(Loan loan) {
-        if (loan.isReturned()) {
-            return "Sudah Dikembalikan";
+    private class ButtonEditor extends DefaultCellEditor {
+        protected JButton button;
+        protected String label;
+        protected boolean isPushed;
+
+        public ButtonEditor(JCheckBox checkBox, String text, Color bgColor) {
+            super(checkBox);
+            button = new JButton();
+            button.setOpaque(true);
+            button.setBackground(bgColor);
+            button.setForeground(Color.WHITE);
+            button.setText(text);
+            button.addActionListener(e -> fireEditingStopped());
         }
-        LocalDate today = LocalDate.now();
-        long daysToDue = ChronoUnit.DAYS.between(today, loan.getDueDate());
-        if (today.isAfter(loan.getDueDate())) {
-            return "Terlambat!";
-        } else if (daysToDue <= 2) {
-            return "Segera Kembali!";
-        } else {
-            return "Belum Jatuh Tempo";
+
+        @Override
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+            label = (value == null) ? button.getText() : value.toString();
+            button.setText(label);
+            isPushed = true;
+            return button;
         }
+
+        @Override
+        public Object getCellEditorValue() {
+            isPushed = false;
+            return label;
+        }
+
+        @Override
+        public boolean stopCellEditing() {
+            isPushed = false;
+            return super.stopCellEditing();
+        }
+    }
+
+    // Getter untuk komponen (akan digunakan oleh LibraryInterface)
+    public JTable getLoanTable() {
+        return loanTable;
+    }
+
+    public DefaultTableModel getTableModel() {
+        return tableModel;
+    }
+
+    public JTextField getBorrowerField() {
+        return borrowerField;
+    }
+
+    public JComboBox<String> getBookComboBox() {
+        return bookComboBox;
+    }
+
+    public JButton getBorrowButton() {
+        return borrowButton;
+    }
+
+    public JButton getReturnButton() {
+        return returnButton;
+    }
+
+    public JButton getDeleteButton() {
+        return deleteButton;
+    }
+
+    public JButton getRefreshButton() {
+        return refreshButton;
     }
 }
